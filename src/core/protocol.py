@@ -7,6 +7,7 @@ from typing import Dict, List, Tuple, Optional
 from .topology import TopologyDB, RoutingTable
 from ..algorithms.dijkstra import DijkstraAlgorithm
 from ..algorithms.new_algorithm import NewAlgorithm
+from ..algorithms.duan_algorithm import DuanAlgorithm
 from ..algorithms.extended_algorithms import (
     BellmanFordAlgorithm,
     SPFAAlgorithm,
@@ -32,10 +33,12 @@ class PathCalculator:
         self.prim_mst_algo = PrimMSTBaseline()
         self.floyd_warshall_algo = FloydWarshallAlgorithm()
         self.astar_algo = AStarAllTargetsAlgorithm()
+        self.duan_algo = DuanAlgorithm()
 
         self.algorithm_registry = {
             'dijkstra': ('Dijkstra', self.dijkstra_algo),
             'new_algo': ('NewAlgorithm', self.new_algo),
+            'duan': ('Duan2025', self.duan_algo),
             'bellman_ford': ('BellmanFord', self.bellman_ford_algo),
             'spfa': ('SPFA', self.spfa_algo),
             'prim_mst': ('PrimMSTBaseline', self.prim_mst_algo),

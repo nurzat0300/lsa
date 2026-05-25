@@ -10,6 +10,10 @@ from PyQt5.QtCore import QTimer, QObject, pyqtSignal
 import threading
 
 from .topology_view import NetworkTopologyWidget
+from .teaching_demo import TeachingDemoWidget
+from .animation_view import AlgorithmAnimationWidget
+from .lsa_monitor import LSAMonitorWidget
+from .neighbor_monitor import NeighborMonitorWidget
 from .styles import apply_stylesheet
 
 
@@ -175,7 +179,8 @@ class AlgorithmComparisonWidget(QWidget):
         self._worker_thread = None
         self.algorithm_display_map = {
             'dijkstra': 'Dijkstra算法',
-            'new_algo': '新型算法',
+            'new_algo': '新型算法(分层桶)',
+            'duan': 'Duan2025(STOC最佳)',
             'bellman_ford': 'Bellman-Ford算法',
             'spfa': 'SPFA算法',
             'prim_mst': 'Prim(MST基线)',
@@ -269,6 +274,7 @@ class AlgorithmComparisonWidget(QWidget):
         ordered_keys = [
             'dijkstra',
             'new_algo',
+            'duan',
             'bellman_ford',
             'spfa',
             'prim_mst',
@@ -640,23 +646,39 @@ class MainWindow(QMainWindow):
         """初始化UI"""
         # 创建标签页
         tabs = QTabWidget()
-        
+
+        # 教学演示标签页（默认第一个）
+        self.teaching_widget = TeachingDemoWidget(self.simulator)
+        tabs.addTab(self.teaching_widget, "📖 教学演示")
+
         # 拓扑显示标签页
         self.topology_widget = NetworkTopologyWidget(self.simulator)
-        tabs.addTab(self.topology_widget, "网络拓扑")
-        
+        tabs.addTab(self.topology_widget, "🔍 网络拓扑")
+
+        # 算法动画标签页
+        self.animation_widget = AlgorithmAnimationWidget(self.simulator)
+        tabs.addTab(self.animation_widget, "🎬 算法动画")
+
         # 路由表标签页
         self.routing_table_widget = RoutingTableWidget(self.simulator)
-        tabs.addTab(self.routing_table_widget, "路由表")
-        
+        tabs.addTab(self.routing_table_widget, "📋 路由表")
+
         # 算法对比标签页
         self.algorithm_widget = AlgorithmComparisonWidget(self.simulator)
-        tabs.addTab(self.algorithm_widget, "算法对比")
-        
+        tabs.addTab(self.algorithm_widget, "📊 算法对比")
+
         # 仿真控制标签页
         self.control_widget = SimulationControlWidget(self.simulator, self)
-        tabs.addTab(self.control_widget, "仿真控制")
-        
+        tabs.addTab(self.control_widget, "⚙️ 仿真控制")
+
+        # LSA 洪泛监控标签页
+        self.lsa_monitor_widget = LSAMonitorWidget(self.simulator)
+        tabs.addTab(self.lsa_monitor_widget, "📡 LSA洪泛")
+
+        # 邻居状态机标签页
+        self.neighbor_monitor_widget = NeighborMonitorWidget(self.simulator)
+        tabs.addTab(self.neighbor_monitor_widget, "💓 邻居状态")
+
         # 设置中心窗口
         self.setCentralWidget(tabs)
         
@@ -729,5 +751,20 @@ class MainWindow(QMainWindow):
 
         try:
             self.control_widget.update_statistics()
+        except Exception:
+            pass
+
+        try:
+            self.animation_widget.refresh_data()
+        except Exception:
+            pass
+
+        try:
+            self.lsa_monitor_widget.refresh_data()
+        except Exception:
+            pass
+
+        try:
+            self.neighbor_monitor_widget.refresh_data()
         except Exception:
             pass

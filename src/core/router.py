@@ -17,7 +17,7 @@ from .constants import (
     UDP_BUFFER_SIZE, LSA_SEND_INTERVAL, HEARTBEAT_INTERVAL, 
     HEARTBEAT_TIMEOUT, Constants
 )
-from .lsa import LSADatabase, RouterLSA, LSAPacket
+from .lsa import LSADatabase, RouterLSA, LSAPacket, LSAEventType, LSAEvent, lsa_event_log
 from .topology import TopologyDB, RoutingTable
 from .protocol import PathCalculator
 
@@ -361,21 +361,66 @@ class Router:
             
             with self._lock:
                 # 检查是否为新LSA
-                if not self.lsa_database.is_new_lsa(source_id, lsa_packet.sequence_number):
-                    self.logger.debug(f"收到重复的LSA，源={source_id}, 序列号={lsa_packet.sequence_number}")
+                is_new = self.lsa_database.is_new_lsa(source_id, lsa_packet.sequence_number)
+                if not is_new:
+                    current = self.lsa_database.get_lsa(source_id)
+                    current_seq = current.sequence_number if current else -1
+                    if lsa_packet.sequence_number == current_seq:
+                        self.logger.debug(f"收到重复的LSA，源={source_id}, 序列号={lsa_packet.sequence_number}")
+                        lsa_event_log.push(LSAEvent(
+                            timestamp=time.time(),
+                            event_type=LSAEventType.RECEIVED_DUP,
+                            source_router_id=source_id,
+                            seq_number=lsa_packet.sequence_number,
+                            router_id=self.router_id,
+                            detail=f"Router{self.router_id} 丢弃重复LSA from R{source_id} seq={lsa_packet.sequence_number}",
+                            hop_count=lsa_packet.hop_count,
+                        ))
+                    else:
+                        self.logger.debug(f"收到旧的LSA，源={source_id}, 序列号={lsa_packet.sequence_number}")
+                        lsa_event_log.push(LSAEvent(
+                            timestamp=time.time(),
+                            event_type=LSAEventType.RECEIVED_OLD,
+                            source_router_id=source_id,
+                            seq_number=lsa_packet.sequence_number,
+                            router_id=self.router_id,
+                            detail=f"Router{self.router_id} 丢弃旧LSA from R{source_id} seq={lsa_packet.sequence_number}(已有seq={current_seq})",
+                            hop_count=lsa_packet.hop_count,
+                        ))
                     return
-                
+
                 # 更新LSA数据库
                 self.lsa_database.update_lsa(source_id, lsa_packet.lsa_data)
                 self.logger.info(f"收到新的LSA，源={source_id}, 序列号={lsa_packet.sequence_number}")
-                
+
+                # 发布 LSA 接收事件（新）
+                lsa_event_log.push(LSAEvent(
+                    timestamp=time.time(),
+                    event_type=LSAEventType.RECEIVED_NEW,
+                    source_router_id=source_id,
+                    seq_number=lsa_packet.sequence_number,
+                    router_id=self.router_id,
+                    detail=f"Router{self.router_id} 接受新LSA from R{source_id} seq={lsa_packet.sequence_number}",
+                    hop_count=lsa_packet.hop_count,
+                ))
+
                 # 更新拓扑
                 self._update_topology_from_lsa(lsa_packet.lsa_data)
-                
+
                 # 转发LSA（除了来源和发送者）
                 if lsa_packet.hop_count > 1:
                     self._flood_lsa(lsa_packet, source_id)
-                
+                else:
+                    lsa_event_log.push(LSAEvent(
+                        timestamp=time.time(),
+                        event_type=LSAEventType.DISCARDED_TTL,
+                        source_router_id=source_id,
+                        seq_number=lsa_packet.sequence_number,
+                        router_id=self.router_id,
+                        detail=f"Router{self.router_id} TTL耗尽，停止转发 from R{source_id}",
+                        hop_count=0,
+                    ))
+
                 # 锁外触发SPF计算，避免长时间持锁阻塞心跳处理
                 need_spf = True
 
@@ -418,16 +463,29 @@ class Router:
         message = lsa_packet.to_bytes()
 
         with self._lock:
+            forwarded_to = []
             for neighbor_id, neighbor_info in self._neighbors.items():
                 if neighbor_id == except_sender_id:
                     continue
-                
+
                 if neighbor_info['state'] == 'up':
                     self._send_queue.put((
                         neighbor_info['ip'],
                         neighbor_info['port'],
                         message
                     ))
+                    forwarded_to.append(neighbor_id)
+
+        if forwarded_to:
+            lsa_event_log.push(LSAEvent(
+                timestamp=time.time(),
+                event_type=LSAEventType.FORWARDED,
+                source_router_id=lsa_packet.source_router_id,
+                seq_number=lsa_packet.sequence_number,
+                router_id=self.router_id,
+                detail=f"Router{self.router_id} 洪泛LSA(from R{lsa_packet.source_router_id}) → {forwarded_to}",
+                hop_count=lsa_packet.hop_count,
+            ))
     
     def _send_lsa(self):
         """发送LSA"""
@@ -472,6 +530,17 @@ class Router:
                     ))
             
             self.logger.debug(f"发送LSA，源={self.router_id}, 序列号={lsa.sequence_number}")
+
+            # 发布 LSA 创建事件
+            lsa_event_log.push(LSAEvent(
+                timestamp=time.time(),
+                event_type=LSAEventType.CREATED,
+                source_router_id=self.router_id,
+                seq_number=lsa.sequence_number,
+                router_id=self.router_id,
+                detail=f"Router{self.router_id} 生成新LSA seq={lsa.sequence_number}",
+                hop_count=30,
+            ))
     
     def _send_heartbeat(self):
         """发送心跳消息到所有邻接路由器"""

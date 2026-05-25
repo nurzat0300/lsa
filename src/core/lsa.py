@@ -3,11 +3,88 @@ LSA数据包和洪泛管理
 """
 import struct
 import json
+import time as _time
+import threading
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Tuple
 from enum import IntEnum
 from datetime import datetime
 from .constants import Link, LinkState
+
+
+# ========== 全局 LSA 事件日志（跨路由器共享） ==========
+class LSAEventType(IntEnum):
+    CREATED = 1       # 本地生成新 LSA
+    RECEIVED_NEW = 2  # 收到新 LSA（已接受）
+    RECEIVED_OLD = 3  # 收到旧 LSA（已丢弃）
+    RECEIVED_DUP = 4  # 收到重复 LSA（已丢弃）
+    FORWARDED = 5     # 洪泛转发给邻居
+    DISCARDED_TTL = 6 # 因 TTL 耗尽丢弃
+
+
+@dataclass
+class LSAEvent:
+    """单条 LSA 事件的完整信息"""
+    timestamp: float
+    event_type: LSAEventType
+    source_router_id: int   # LSA 的原始产生者
+    seq_number: int
+    router_id: int          # 执行操作的路由器
+    detail: str = ""
+    hop_count: int = 0
+
+    def to_dict(self) -> Dict:
+        return {
+            'timestamp': self.timestamp,
+            'event_type': int(self.event_type),
+            'event_name': self.event_type.name,
+            'source_router_id': self.source_router_id,
+            'seq_number': self.seq_number,
+            'router_id': self.router_id,
+            'detail': self.detail,
+            'hop_count': self.hop_count,
+        }
+
+
+class LSAEventLog:
+    """全局 LSA 事件日志，供 UI 实时订阅。"""
+
+    MAX_EVENTS = 5000
+
+    def __init__(self):
+        self._events: List[LSAEvent] = []
+        self._lock = threading.Lock()
+        self._subscribers: List[callable] = []
+
+    def push(self, event: LSAEvent):
+        with self._lock:
+            self._events.append(event)
+            if len(self._events) > self.MAX_EVENTS:
+                self._events = self._events[-self.MAX_EVENTS // 2:]
+        for cb in self._subscribers:
+            try:
+                cb(event)
+            except Exception:
+                pass
+
+    def get_recent(self, count: int = 200) -> List[Dict]:
+        with self._lock:
+            return [e.to_dict() for e in self._events[-count:]]
+
+    def get_all(self) -> List[Dict]:
+        with self._lock:
+            return [e.to_dict() for e in self._events]
+
+    def subscribe(self, callback: callable):
+        self._subscribers.append(callback)
+
+    def clear(self):
+        with self._lock:
+            self._events.clear()
+
+
+# 全局单例
+lsa_event_log = LSAEventLog()
 
 class LSAType(IntEnum):
     """LSA类型"""

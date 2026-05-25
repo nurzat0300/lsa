@@ -1,5 +1,6 @@
 from .dijkstra import DijkstraAlgorithm
 from .new_algorithm import NewAlgorithm
+from .duan_algorithm import DuanAlgorithm
 from .extended_algorithms import (
 	BellmanFordAlgorithm,
 	SPFAAlgorithm,
@@ -11,6 +12,7 @@ from .extended_algorithms import (
 __all__ = [
 	'DijkstraAlgorithm',
 	'NewAlgorithm',
+	'DuanAlgorithm',
 	'BellmanFordAlgorithm',
 	'SPFAAlgorithm',
 	'PrimMSTBaseline',
