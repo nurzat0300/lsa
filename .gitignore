@@ -15,3 +15,5 @@ FILE_LISTING.md
 PROJECT_SUMMARY.md
 README_FULL.md
 论文资料/
+*.doc
+*.docx
