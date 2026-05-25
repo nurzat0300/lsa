@@ -65,6 +65,12 @@ if errorlevel 1 (
 exit /b 0
 
 :install_requirements
+echo [INFO] Installing setuptools and wheel first...
+%PIP_BASE% --quiet install setuptools>=65 wheel>=0.38
+if errorlevel 1 (
+    echo [WARN] Failed to install setuptools/wheel, continuing anyway...
+)
+
 echo [INFO] Try source: https://pypi.tuna.tsinghua.edu.cn/simple
 %PIP_BASE% -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn -r requirements.txt
 if not errorlevel 1 goto :install_ok
