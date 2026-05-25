@@ -1,0 +1,6 @@
+".venv/" 
+".tmp_*" 
+"__pycache__/" 
+"*.pyc" 
+".vscode/" 
+".idea/" 
